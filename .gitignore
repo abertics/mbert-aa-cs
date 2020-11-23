@@ -1,0 +1,4 @@
+.DS_Store
+evalsets/.DS_Store
+evalsets/data/*
+results/*
