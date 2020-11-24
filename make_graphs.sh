@@ -1,6 +1,8 @@
-python3 analyze_results.py --data ./results/bertevaldata.txt \
-						   --output_dir ./results/ \
+python3 analyze_results.py --data ./results/frru_bertevaldata.txt \
+						   --lang1 fr \
+						   --lang2 ru \
+						   --output_dir ./results/frru/ \
 						   --bigboy \
 						   --attractoragreement \
-						   --onlyenglish \
-						   --onlyfrench \
+						   --onlyfirst \
+						   --onlysecond \

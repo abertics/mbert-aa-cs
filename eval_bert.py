@@ -1,25 +1,24 @@
 # coding=utf-8
-from pytorch_pretrained_bert import BertForMaskedLM,tokenization
-import torch
 import argparse
 import sys
-import csv
+import torch
+
+from pytorch_pretrained_bert import BertForMaskedLM,tokenization
 
 
 parser = argparse.ArgumentParser(description='Multilingual BERT Evaluation')
 
-parser.add_argument('--data', type=str, default='./evalsets/data/forbert.tsv',
+parser.add_argument('--data', type=str, default='./data/prep_anim.txt',
                     help='location of data for evaluation')
 args = parser.parse_args()
 
-# MODIFIED BY AARON MUELLER
-# MODIFICATIONS MODIFIED BY ABBY BERTICS
 
 # Use multilingual model
 model_name = 'bert-base-multilingual-cased'
 print("using model:",model_name,file=sys.stderr)
+
 bert=BertForMaskedLM.from_pretrained(model_name)
-tokenizer=tokenization.BertTokenizer.from_pretrained(model_name, do_lower_case=False)
+tokenizer = tokenization.BertTokenizer.from_pretrained(model_name, do_lower_case=False)
 bert.eval()
 
 
@@ -27,59 +26,75 @@ bert.eval()
 def look_at_confusion():
     pass
 
+def get_target_logprob(target_tokens, pre, post):
+  ## Sequentially generate log probability of target.
+  ##  ex: target is two tokens, t1 & t2
+  ##        product of (or sum of logs of):
+  ##           prob t1 given w0 [MASK] [MASK] w3
+  ##           prob t2 given w0 t1 [MASK] w3
+
+  target_ids = tokenizer.convert_tokens_to_ids(target_tokens)
+  target_len = len(target_tokens)
+
+  tokens = ['[CLS]'] + tokenizer.tokenize(pre)
+  target_index = len(tokens)
+  tokens += ['[MASK]']*target_len + tokenizer.tokenize(post) + ['[SEP]']
+
+  logprob = 0
+  for i in range(target_len):
+    input_ids=tokenizer.convert_tokens_to_ids(tokens)
+    sentence_tensor = torch.tensor([input_ids])
+
+    with torch.no_grad():
+      predictions = bert(sentence_tensor)
+      softmaxed = torch.nn.functional.softmax(predictions, dim=2)
+
+    prob_word = softmaxed[0, target_index, target_ids[i]]
+    logprob += prob_word.log().item()
+
+    # update mask with word for next prediction
+    tokens[target_index] = target_tokens[i]
+    target_index += 1
+  
+  return logprob
+  
 def get_probs_for_words(sent, w1, w2):
-    pre, target, post=sent.split('***')
+    pre, target, post = sent.split('***')
 
     if 'mask' in target.lower():
         target=['[MASK]']
     else:
         print("target not mask??",sent,file=sys.stderr)
         target=tokenizer.tokenize(target)
-        
-    tokens = ['[CLS]'] + tokenizer.tokenize(pre)
-    target_index = len(tokens)
-    tokens += target + tokenizer.tokenize(post) + ['[SEP]']
-    input_ids=tokenizer.convert_tokens_to_ids(tokens)
     
-    try:
-        word_ids=tokenizer.convert_tokens_to_ids([w1,w2])
-    except KeyError:
-        w1_tokens = tokenizer.tokenize(w1)
-        w2_tokens = tokenizer.tokenize(w2)
+    w1_tokens = tokenizer.tokenize(w1)
+    w2_tokens = tokenizer.tokenize(w2)
 
-        if len(w1_tokens) != len(w2_tokens):
-            print("token length mismatch:", w1, w2,file=sys.stderr)
-            return None
+    if len(w1_tokens) != len(w2_tokens):
+        print("token length mismatch:", w1, w2,file=sys.stderr)
+        return None
 
-        guess1_ids = tokenizer.convert_tokens_to_ids(w1_tokens)
-        guess2_ids = tokenizer.convert_tokens_to_ids(w2_tokens)
+    # not super efficient, but makes sense
+    logprob1 = get_target_logprob(w1_tokens, pre, post)
+    logprob2 = get_target_logprob(w2_tokens, pre, post)
 
-        if w1_tokens[0] != w2_tokens[0] or len(w1_tokens) != 2 or len(w2_tokens) != 2 :
-            print("first token mismatch:", w1, w2, file=sys.stderr)
-            return None
-
-
-        tokens = ['[CLS]'] + tokenizer.tokenize(pre) + [w1_tokens[0]]
-        target_index = len(tokens)
-        tokens += target + tokenizer.tokenize(post) + ['[SEP]']
+    # sanity check
+    if len(w1_tokens) == 1:
+        tokens=['[CLS]']+tokenizer.tokenize(pre)
+        target_idx=len(tokens)
+        tokens+=target+tokenizer.tokenize(post)+['[SEP]']
         input_ids=tokenizer.convert_tokens_to_ids(tokens)
-        
-        # print("skipping",w1,w2,"bad wins")
 
-        # The tricky thing is that words might be split into multiple subwords. 
-        # You can simulate that be adding multiple [MASK] tokens, but then you have a 
-        # problem of how to reliably compare the scores of prediction so different lengths. 
-        # I would probably average the probabilities, but maybe there is a better way.
+        word_ids=tokenizer.convert_tokens_to_ids([w1,w2])
+        tens=torch.LongTensor(input_ids).unsqueeze(0)
+        res=bert(tens)[0,target_idx]
+        scores = res[word_ids]
 
-        # but how do we now get the probability of a multi-token word in a single-token position?
+        if scores[0] > scores[1] and logprob1 < logprob2:
+            print("FUCKMEUP", file=sys.stderr)
+        return [float(x) for x in scores]
 
-        print("going ahead", w1, w2, w1_tokens[0])
-        word_ids = [guess1_ids[1], guess2_ids[1]]
-
-    sentence_tensor = torch.LongTensor(input_ids).unsqueeze(0)
-    result = bert(sentence_tensor)[0,target_index]
-    scores = result[word_ids]
-    return [float(x) for x in scores]
+    return [logprob1, logprob2]
 
 def load_data(data_file):
     out = []
@@ -94,12 +109,12 @@ def load_data(data_file):
         ug = case[3].split()
         assert(len(g)==len(ug)),(g,ug) # sentences must be same length
 
-        # should only have difference in one spot (i.e. the verb)
+        # should only have difference in one word (i.e. the verb)
         diffs = [i for i,pair in enumerate(zip(g,ug)) if pair[0]!=pair[1]]
         assert(len(diffs)==1),diffs 
 
         grammatical_answer   = g[diffs[0]]   # good
-        ungrammatical_answer = ug[diffs[0]] # bad
+        ungrammatical_answer = ug[diffs[0]]  # bad
 
         # mask it, make it sentence
         g[diffs[0]] = "***mask***"

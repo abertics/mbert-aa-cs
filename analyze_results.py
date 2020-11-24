@@ -12,27 +12,31 @@ parser = argparse.ArgumentParser(description='Multilingual BERT Evaluation Analy
 
 parser.add_argument('--data', type=str, default='./results/bertevaldata.txt',
                     help='location of data for analysis')
+parser.add_argument('--lang1', type=str, default='en',
+					help='first language')
+parser.add_argument('--lang2', type=str, default='fr',
+					help='second language')
 parser.add_argument('--output_dir', type=str, default='./results/',
                     help='place to dump graphs')
 parser.add_argument('--bigboy', action='store_true',
                     help='plot bigboy, with all data')
 parser.add_argument('--attractoragreement', action='store_true',
                     help='plot graph assuming correct means agreeing with attractor')
-parser.add_argument('--onlyenglish', action='store_true',
-                    help='plot only english verb data')
-parser.add_argument('--onlyfrench', action='store_true',
-                    help='plot only french verb data')
+parser.add_argument('--onlyfirst', action='store_true',
+                    help='plot only first language verb data')
+parser.add_argument('--onlysecond', action='store_true',
+                    help='plot only second language verb data')
 args = parser.parse_args()
 
 
-def load_data_into_df(filename):
+def load_data_into_df(filename, lang1, lang2):
 	lines = open(args.data, 'r').readlines()
 
 	counts = {}
 	sents = {}
 	throw_outs = {}
 
-	lcodes = {0: 'en', 1: 'fr'}
+	lcodes = {0: lang1, 1: lang2}
 	gcodes = {0: '_s', 1: '_p'}
 
 	lcombos = list(itertools.product([0, 1], repeat=3))
@@ -65,7 +69,7 @@ def load_data_into_df(filename):
 
 
 	dic = {'SubjAttractor': [],'Langs': [], 'Accuracies': []}
-	ll = {'en': "E", 'fr':'F', 's':"S", 'p':"P"}
+	ll = {lang1: lang1[0].upper(), lang2:lang2[0].upper(), 's':"S", 'p':"P"}
 	for m in counts:
 		sa_tag = ll[m[3:4]] + ll[m[9:10]]
 		l_tag = ll[m[0:2]] + ll[m[6:8]] + ll[m[12:14]] 
@@ -80,7 +84,7 @@ def load_data_into_df(filename):
 	return df
 
 
-df = load_data_into_df(args.data)
+df = load_data_into_df(args.data, args.lang1, args.lang2)
 
 if args.bigboy:
 	# big boy
@@ -110,24 +114,24 @@ if args.attractoragreement:
 	plt.title("Agrees with Attractor")
 	plt.savefig(args.output_dir+'attractor_agreement.png')
 
-if args.onlyenglish:
-	# only english verb
-	df_en = df[df.Langs.str[-1] == "E"]
+if args.onlyfirst:
+	# only first verb
+	df_en = df[df.Langs.str[-1] == args.lang1[0].upper()]
 
 	fig, ax = plt.subplots(figsize=(15, 8))
 	sns.barplot(data=df_en.reset_index(), x="SubjAttractor", y="Accuracies",
 	            hue="Langs", ax=ax, ci=None)
-	plt.title("Only English")
-	plt.savefig(args.output_dir+'english_agreement.png')
+	plt.title("Only {}".format(args.lang1))
+	plt.savefig(args.output_dir+args.lang1+'_agreement.png')
 
-if args.onlyfrench:
-	# only french verb
-	df_fr = df[df.Langs.str[-1] == "F"]
+if args.onlysecond:
+	# only second verb
+	df_fr = df[df.Langs.str[-1] == args.lang2[0].upper()]
 
 	fig, ax = plt.subplots(figsize=(15, 8))
 	sns.barplot(data=df_fr.reset_index(), x="SubjAttractor", y="Accuracies",
 	            hue="Langs", ax=ax, ci=None)
-	plt.title("Only French")
-	plt.savefig(args.output_dir+'french_agreement.png')
+	plt.title("Only {}".format(args.lang2))
+	plt.savefig(args.output_dir+args.lang2+'_agreement.png')
 
 
