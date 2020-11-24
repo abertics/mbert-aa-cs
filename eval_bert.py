@@ -10,6 +10,8 @@ parser = argparse.ArgumentParser(description='Multilingual BERT Evaluation')
 
 parser.add_argument('--data', type=str, default='./data/prep_anim.txt',
                     help='location of data for evaluation')
+parser.add_argument('--cuda', action='store_true',
+                    help='use CUDA')
 args = parser.parse_args()
 
 
@@ -19,6 +21,8 @@ print("using model:",model_name,file=sys.stderr)
 
 bert=BertForMaskedLM.from_pretrained(model_name)
 tokenizer = tokenization.BertTokenizer.from_pretrained(model_name, do_lower_case=False)
+if args.cuda:
+    bert.to('cuda')
 bert.eval()
 
 
@@ -44,6 +48,8 @@ def get_target_logprob(target_tokens, pre, post):
   for i in range(target_len):
     input_ids=tokenizer.convert_tokens_to_ids(tokens)
     sentence_tensor = torch.tensor([input_ids])
+    if args.cuda:
+        sentence_tensor = torch.tensor([input_ids]).to('cuda')
 
     with torch.no_grad():
       predictions = bert(sentence_tensor)
@@ -79,20 +85,20 @@ def get_probs_for_words(sent, w1, w2):
     logprob2 = get_target_logprob(w2_tokens, pre, post)
 
     # sanity check
-    if len(w1_tokens) == 1:
-        tokens=['[CLS]']+tokenizer.tokenize(pre)
-        target_idx=len(tokens)
-        tokens+=target+tokenizer.tokenize(post)+['[SEP]']
-        input_ids=tokenizer.convert_tokens_to_ids(tokens)
+    # if len(w1_tokens) == 1:
+    #     tokens=['[CLS]']+tokenizer.tokenize(pre)
+    #     target_idx=len(tokens)
+    #     tokens+=target+tokenizer.tokenize(post)+['[SEP]']
+    #     input_ids=tokenizer.convert_tokens_to_ids(tokens)
 
-        word_ids=tokenizer.convert_tokens_to_ids([w1,w2])
-        tens=torch.LongTensor(input_ids).unsqueeze(0)
-        res=bert(tens)[0,target_idx]
-        scores = res[word_ids]
+    #     word_ids=tokenizer.convert_tokens_to_ids([w1,w2])
+    #     tens=torch.LongTensor(input_ids).unsqueeze(0)
+    #     res=bert(tens)[0,target_idx]
+    #     scores = res[word_ids]
 
-        if scores[0] > scores[1] and logprob1 < logprob2:
-            print("FUCKMEUP", file=sys.stderr)
-        return [float(x) for x in scores]
+    #     if scores[0] > scores[1] and logprob1 < logprob2:
+    #         print("FUCKMEUP", file=sys.stderr)
+    #     return [float(x) for x in scores]
 
     return [logprob1, logprob2]
 
