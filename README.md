@@ -22,8 +22,7 @@ python3 eval_bert.py --data data/prep_anim.txt > results/enfrru_prep_anim_bert.t
 
 
 ## Analyzing mBERT's predictions 
-from mbert-aa-cs:
-./make_graphs.sh
->> Graphs will now be in mbert-aa-cs/results
-
+R code is also located here: https://colab.research.google.com/drive/1t2p3bejrjSH45UPFDMUrXSL4W5MBSRCF?usp=sharing
+play around with analyze_results.py
+my sincerest apologies for the messiness
 
